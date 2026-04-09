@@ -1,19 +1,9 @@
 @import 'tailwindcss';
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+@import '@fontsource-variable/geist';
 
 @custom-variant dark (&:is(.dark *));
-
-@theme {
-  --color-surface: #111122;
-  --color-surface-raised: #1a1a2e;
-  --color-border: #2a2a4a;
-  --color-text: #e0e0e0;
-  --color-text-muted: #888;
-  --color-primary: #3b82f6;
-  --color-primary-hover: #2563eb;
-}
 
 @theme inline {
   --font-heading: var(--font-sans);
