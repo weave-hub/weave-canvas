@@ -66,5 +66,4 @@ jobs:
         run: cargo test -- --test-threads=1
 
       - name: Build check
-        if: github.event_name == 'push'
         run: pnpm tauri build

@@ -37,6 +37,17 @@ Weave is a Claude Code AI Agent Activity Visualizer — a Tauri v2 desktop app w
 - `src-tauri/` — Rust backend (Tauri commands, file watcher, session management)
 - Tauri config: `src-tauri/tauri.conf.json`
 
+## Branch Strategy
+
+- **`main`** — 프로덕션 브랜치. 직접 push 금지, PR을 통해서만 머지
+- **Feature branches** — `main`에서 분기하여 작업 후 PR로 머지
+- **Branch protection** (GitHub Pro 또는 public 리포 필요):
+  - CI(`test` job) 통과 필수
+  - `main` 최신 상태와 동기화(strict) 필수
+  - 관리자 포함 예외 없음 (`enforce_admins: true`)
+  - force push / branch 삭제 금지
+- **네이밍**: `feat/`, `fix/`, `refactor/`, `docs/` 등 prefix 사용
+
 ## CI
 
-GitHub Actions runs on PRs to `main`: Prettier, ESLint, rustfmt, clippy, TypeScript check, frontend tests, Rust tests. Full Tauri build only runs on push to `main`.
+GitHub Actions runs on PRs and pushes to `main`: Prettier, ESLint, rustfmt, clippy, TypeScript check, frontend tests, Rust tests, Tauri build. All checks must pass before merge.
