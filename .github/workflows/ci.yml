@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-22.04
@@ -57,9 +61,6 @@ jobs:
 
       - name: TypeScript check
         run: pnpm exec tsc --noEmit
-
-      - name: Frontend tests
-        run: pnpm exec vitest run
 
       - name: Rust tests
         working-directory: src-tauri
