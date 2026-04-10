@@ -3,25 +3,33 @@ import { useEffect, useRef } from 'react'
 import { Application, Container, Graphics } from 'pixi.js'
 import type { CanvasNode } from '@/types'
 import { computeLayout } from '@/canvas/layout'
-import { createNodeGraphics } from '@/canvas/node-renderer'
+import { createNodeGraphics, updateNodeSelection } from '@/canvas/node-renderer'
 import { drawEdges } from '@/canvas/edge-renderer'
 import { setupViewport, scrollToBottom } from '@/canvas/viewport'
 import type { ViewportState } from '@/canvas/viewport'
+
+type CachedNode = { container: Container; height: number; content: string }
 
 type PixiCanvasProps = {
   nodes: CanvasNode[]
   onNodeClick?: (node: CanvasNode) => void
   onFpsUpdate?: (fps: number) => void
+  selectedNodeId?: string
 }
 
-export function PixiCanvas({ nodes, onNodeClick, onFpsUpdate }: PixiCanvasProps) {
+export function PixiCanvas({ nodes, onNodeClick, onFpsUpdate, selectedNodeId }: PixiCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<Application | null>(null)
   const worldRef = useRef<Container | null>(null)
   const edgeGraphicsRef = useRef<Graphics | null>(null)
-  const nodeContainersRef = useRef<Map<string, Container>>(new Map())
+  const nodeContainersRef = useRef<Map<string, CachedNode>>(new Map())
   const viewportStateRef = useRef<ViewportState>({ autoScroll: true })
   const cleanupViewportRef = useRef<(() => void) | null>(null)
+  const prevSelectedRef = useRef<string | null>(null)
+  const selectedNodeIdRef = useRef(selectedNodeId)
+  useEffect(() => {
+    selectedNodeIdRef.current = selectedNodeId
+  }, [selectedNodeId])
   const onNodeClickRef = useRef(onNodeClick)
   useEffect(() => {
     onNodeClickRef.current = onNodeClick
@@ -41,9 +49,10 @@ export function PixiCanvas({ nodes, onNodeClick, onFpsUpdate }: PixiCanvasProps)
     let cancelled = false
 
     // CSS oklch() 등을 PixiJS가 인식하는 hex로 변환
-    // Canvas 2D fillStyle은 어떤 CSS color든 #rrggbb로 정규화
+    // 부모 컨테이너 또는 최상위 bg-background 요소에서 배경색을 읽음
     const bgHex = (() => {
-      const computed = getComputedStyle(document.body).backgroundColor
+      const el = container.closest('.bg-background') ?? document.body
+      const computed = getComputedStyle(el).backgroundColor
       const ctx = document.createElement('canvas').getContext('2d')
       if (ctx) {
         ctx.fillStyle = computed
@@ -74,6 +83,7 @@ export function PixiCanvas({ nodes, onNodeClick, onFpsUpdate }: PixiCanvasProps)
 
         const world = new Container()
         world.label = 'world'
+        world.isRenderGroup = true
         app.stage.addChild(world)
         worldRef.current = world
 
@@ -131,10 +141,10 @@ export function PixiCanvas({ nodes, onNodeClick, onFpsUpdate }: PixiCanvasProps)
     const currentIds = new Set(layout.positions.map((p) => p.nodeId))
 
     // 삭제된 노드 제거
-    for (const [id, container] of existing) {
+    for (const [id, cached] of existing) {
       if (!currentIds.has(id)) {
-        world.removeChild(container)
-        container.destroy({ children: true })
+        world.removeChild(cached.container)
+        cached.container.destroy({ children: true })
         existing.delete(id)
       }
     }
@@ -146,16 +156,25 @@ export function PixiCanvas({ nodes, onNodeClick, onFpsUpdate }: PixiCanvasProps)
 
       const cached = existing.get(pos.nodeId)
       if (cached) {
-        cached.x = pos.x
-        cached.y = pos.y
-      } else {
-        const gfx = createNodeGraphics(node, pos)
-        gfx.on('pointertap', () => {
-          onNodeClickRef.current?.(node)
-        })
-        world.addChild(gfx)
-        existing.set(pos.nodeId, gfx)
+        if (cached.height !== pos.height || cached.content !== node.content) {
+          // 높이 또는 콘텐츠 변경 -> destroy 후 재생성
+          world.removeChild(cached.container)
+          cached.container.destroy({ children: true })
+          existing.delete(pos.nodeId)
+        } else {
+          cached.container.x = pos.x
+          cached.container.y = pos.y
+          continue
+        }
       }
+
+      const isSelected = pos.nodeId === selectedNodeIdRef.current
+      const gfx = createNodeGraphics(node, pos, isSelected)
+      gfx.on('pointertap', () => {
+        onNodeClickRef.current?.(node)
+      })
+      world.addChild(gfx)
+      existing.set(pos.nodeId, { container: gfx, height: pos.height, content: node.content })
     }
 
     // 엣지 렌더링 (단일 Graphics — 전체 다시 그려도 저비용)
@@ -167,6 +186,30 @@ export function PixiCanvas({ nodes, onNodeClick, onFpsUpdate }: PixiCanvasProps)
       scrollToBottom(world, canvas.height / (window.devicePixelRatio || 1), layout.totalHeight)
     }
   }, [nodes])
+
+  // 선택 변경 시 필터만 교체 (노드 재생성 없이)
+  // nodes를 의존성에서 제외: 노드 생성/재생성 시 이미 isSelected 반영됨
+  const nodesRef = useRef(nodes)
+  useEffect(() => {
+    nodesRef.current = nodes
+  }, [nodes])
+
+  useEffect(() => {
+    const existing = nodeContainersRef.current
+    const nodeMap = new Map(nodesRef.current.map((n) => [n.id, n]))
+
+    if (prevSelectedRef.current && prevSelectedRef.current !== selectedNodeId) {
+      const prev = existing.get(prevSelectedRef.current)
+      const prevNode = nodeMap.get(prevSelectedRef.current)
+      if (prev && prevNode) updateNodeSelection(prev.container, false, prevNode.type)
+    }
+    if (selectedNodeId) {
+      const sel = existing.get(selectedNodeId)
+      const selNode = nodeMap.get(selectedNodeId)
+      if (sel && selNode) updateNodeSelection(sel.container, true, selNode.type)
+    }
+    prevSelectedRef.current = selectedNodeId ?? null
+  }, [selectedNodeId])
 
   return <div ref={containerRef} className="w-full h-full overflow-hidden" />
 }

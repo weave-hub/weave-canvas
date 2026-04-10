@@ -1,12 +1,7 @@
 // src/canvas/layout.ts
 import type { CanvasNode } from '@/types'
-
-const NODE_WIDTH = 200
-const NODE_HEIGHT = 60
-const NODE_GAP_Y = 20
-const LANE_GAP_X = 260
-const PADDING_TOP = 40
-const PADDING_LEFT = 40
+import { NODE_WIDTH, NODE_GAP_Y, LANE_GAP_X, PADDING_TOP, PADDING_LEFT } from './constants'
+import { measureNodeHeight } from './measure-node-height'
 
 export type NodePosition = {
   nodeId: string
@@ -65,15 +60,16 @@ export function computeLayout(nodes: CanvasNode[]): LayoutResult {
     let y = PADDING_TOP
 
     for (const node of laneNodes.get(agentId)!) {
+      const height = measureNodeHeight(node)
       positions.push({
         nodeId: node.id,
         x: laneX,
         y,
         width: NODE_WIDTH,
-        height: NODE_HEIGHT,
+        height,
         laneIndex: laneIdx,
       })
-      y += NODE_HEIGHT + NODE_GAP_Y
+      y += height + NODE_GAP_Y
     }
 
     laneYCounters.set(agentId, y)

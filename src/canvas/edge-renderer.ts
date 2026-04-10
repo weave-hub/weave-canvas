@@ -8,6 +8,29 @@ const EDGE_COLORS = {
   'tool-match': 0x4c8cba,
 } as const
 
+function drawArrowHead(
+  graphics: Graphics,
+  toX: number,
+  toY: number,
+  fromX: number,
+  fromY: number,
+  color: number,
+  alpha: number,
+  size = 8,
+): void {
+  const angle = Math.atan2(toY - fromY, toX - fromX)
+  const p1x = toX - size * Math.cos(angle - Math.PI / 6)
+  const p1y = toY - size * Math.sin(angle - Math.PI / 6)
+  const p2x = toX - size * Math.cos(angle + Math.PI / 6)
+  const p2y = toY - size * Math.sin(angle + Math.PI / 6)
+
+  graphics.moveTo(toX, toY)
+  graphics.lineTo(p1x, p1y)
+  graphics.lineTo(p2x, p2y)
+  graphics.closePath()
+  graphics.fill({ color, alpha })
+}
+
 export function drawEdges(graphics: Graphics, edges: EdgeDef[], posMap: Map<string, NodePosition>): void {
   graphics.clear()
 
@@ -23,18 +46,18 @@ export function drawEdges(graphics: Graphics, edges: EdgeDef[], posMap: Map<stri
     const toY = to.y
 
     if (edge.type === 'sequence') {
-      // 직선
       graphics.moveTo(fromX, fromY)
       graphics.lineTo(toX, toY)
-      graphics.stroke({ color, width: 1.5, alpha: 0.6 })
+      graphics.stroke({ color, width: 2.5, alpha: 0.8 })
+      drawArrowHead(graphics, toX, toY, fromX, fromY, color, 0.8)
     } else if (edge.type === 'branch') {
-      // bezier 곡선
       const midY = (fromY + toY) / 2
       graphics.moveTo(fromX, fromY)
       graphics.bezierCurveTo(fromX, midY, toX, midY, toX, toY)
-      graphics.stroke({ color, width: 2, alpha: 0.8 })
+      graphics.stroke({ color, width: 3, alpha: 0.9 })
+      // Arrow direction from last control point to endpoint
+      drawArrowHead(graphics, toX, toY, toX, midY, color, 0.9)
     } else if (edge.type === 'tool-match') {
-      // 점선 효과 — 짧은 세그먼트로 시뮬레이션
       const segments = 8
       const dx = toX - fromX
       const dy = toY - fromY
@@ -44,7 +67,8 @@ export function drawEdges(graphics: Graphics, edges: EdgeDef[], posMap: Map<stri
         graphics.moveTo(fromX + dx * t0, fromY + dy * t0)
         graphics.lineTo(fromX + dx * t1, fromY + dy * t1)
       }
-      graphics.stroke({ color, width: 1, alpha: 0.4 })
+      graphics.stroke({ color, width: 1.5, alpha: 0.6 })
+      drawArrowHead(graphics, toX, toY, fromX, fromY, color, 0.6, 6)
     }
   }
 }
