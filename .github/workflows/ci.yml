@@ -70,4 +70,4 @@ jobs:
         run: cargo test -- --test-threads=1
 
       - name: Build check
-        run: pnpm tauri build
+        run: pnpm tauri build ${{ github.ref_name == 'develop' && '--debug' || '' }}
