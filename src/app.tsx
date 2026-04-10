@@ -11,7 +11,7 @@ function App() {
     <div className="flex flex-col h-screen w-screen bg-background text-foreground">
       <Toolbar onTogglePanel={() => setPanelOpen((prev) => !prev)} />
       <main className="relative flex-1 overflow-hidden">
-        <CanvasArea activeSessionId={null} events={[]} />
+        <CanvasArea />
         <SidePanel open={panelOpen} onOpenChange={setPanelOpen} />
       </main>
       <StatusBar />
