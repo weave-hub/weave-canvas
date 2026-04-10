@@ -12,7 +12,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test": "echo \"No test framework configured\" && exit 1",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -38,6 +39,8 @@
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.2.2",
     "@tauri-apps/cli": "^2.10.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^25.5.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
@@ -45,10 +48,12 @@
     "eslint": "^10.2.0",
     "eslint-plugin-react-hooks": "7.1.0-canary-404b38c7-20260408",
     "eslint-plugin-react-refresh": "^0.5.2",
+    "jsdom": "^29.0.2",
     "prettier": "^3.8.1",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.58.1",
-    "vite": "^8.0.8"
+    "vite": "^8.0.8",
+    "vitest": "^4.1.4"
   }
 }
