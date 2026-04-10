@@ -37,3 +37,6 @@ coverage/
 
 # Superpowers
 .superpowers/
+
+# Git worktrees
+.worktrees/
