@@ -1,5 +1,5 @@
 # Changelog
 
-## 0.1.0
+## 0.1.1
 
-To be released.
+Released on April 10, 2026.

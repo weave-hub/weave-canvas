@@ -1,6 +1,6 @@
 [package]
 name = "weave"
-version = "0.1.0"
+version = "0.1.1"
 description = "Weave - Claude Code AI Agent Activity Visualizer"
 authors = ["you"]
 edition = "2021"
