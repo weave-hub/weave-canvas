@@ -10,6 +10,10 @@ jobs:
   publish-tauri:
     permissions:
       contents: write
+
+    env:
+      IS_RC: ${{ contains(github.ref_name, '-rc') }}
+
     strategy:
       fail-fast: false
       matrix:
@@ -59,7 +63,7 @@ jobs:
           tagName: v__VERSION__
           releaseName: 'Weave v__VERSION__'
           releaseBody: 'See the assets to download and install.'
-          releaseDraft: true
-          prerelease: false
+          releaseDraft: ${{ env.IS_RC == 'false' }}
+          prerelease: ${{ env.IS_RC == 'true' }}
           args: ${{ matrix.args }}
           tauriScript: pnpm tauri

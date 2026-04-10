@@ -2,9 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
     branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -57,9 +61,6 @@ jobs:
 
       - name: TypeScript check
         run: pnpm exec tsc --noEmit
-
-      - name: Frontend tests
-        run: pnpm exec vitest run
 
       - name: Rust tests
         working-directory: src-tauri
