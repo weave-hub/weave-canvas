@@ -1,134 +1,67 @@
 // src/components/pixi-canvas.tsx
 import { useEffect, useRef } from 'react'
-import { Application, Container, Graphics } from 'pixi.js'
+import type { Container } from 'pixi.js'
 import type { CanvasNode } from '@/types'
 import { computeLayout } from '@/canvas/layout'
 import { createNodeGraphics, updateNodeSelection } from '@/canvas/node-renderer'
 import { drawEdges } from '@/canvas/edge-renderer'
 import { setupViewport, scrollToBottom } from '@/canvas/viewport'
 import type { ViewportState } from '@/canvas/viewport'
+import { usePixiApp } from '@/hooks/use-pixi-app'
 
 type CachedNode = { container: Container; height: number; content: string }
 
-type PixiCanvasProps = {
+interface PixiCanvasProps {
   nodes: CanvasNode[]
   onNodeClick?: (node: CanvasNode) => void
   onFpsUpdate?: (fps: number) => void
   selectedNodeId?: string
 }
 
-export function PixiCanvas({ nodes, onNodeClick, onFpsUpdate, selectedNodeId }: PixiCanvasProps) {
+export function PixiCanvas({ nodes, onNodeClick, onFpsUpdate, selectedNodeId }: PixiCanvasProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
-  const appRef = useRef<Application | null>(null)
-  const worldRef = useRef<Container | null>(null)
-  const edgeGraphicsRef = useRef<Graphics | null>(null)
   const nodeContainersRef = useRef<Map<string, CachedNode>>(new Map())
   const viewportStateRef = useRef<ViewportState>({ autoScroll: true })
-  const cleanupViewportRef = useRef<(() => void) | null>(null)
   const prevSelectedRef = useRef<string | null>(null)
+  const prevNodesRef = useRef<CanvasNode[]>([])
+
+  // 콜백 ref 패턴 — stale closure 방지
   const selectedNodeIdRef = useRef(selectedNodeId)
   useEffect(() => {
     selectedNodeIdRef.current = selectedNodeId
   }, [selectedNodeId])
+
   const onNodeClickRef = useRef(onNodeClick)
   useEffect(() => {
     onNodeClickRef.current = onNodeClick
   }, [onNodeClick])
+
   const onFpsUpdateRef = useRef(onFpsUpdate)
   useEffect(() => {
     onFpsUpdateRef.current = onFpsUpdate
   }, [onFpsUpdate])
 
-  // PixiJS Application 초기화
+  const nodesRef = useRef(nodes)
   useEffect(() => {
-    const container = containerRef.current
-    if (!container) return
+    nodesRef.current = nodes
+  }, [nodes])
 
-    const app = new Application()
-    const nodeContainers = nodeContainersRef.current
-    let cancelled = false
+  // PixiJS Application 라이프사이클
+  const { app, world, edgeGraphics, resources, error } = usePixiApp(containerRef, onFpsUpdateRef)
 
-    // CSS oklch() 등을 PixiJS가 인식하는 hex로 변환
-    // 부모 컨테이너 또는 최상위 bg-background 요소에서 배경색을 읽음
-    const bgHex = (() => {
-      const el = container.closest('.bg-background') ?? document.body
-      const computed = getComputedStyle(el).backgroundColor
-      const ctx = document.createElement('canvas').getContext('2d')
-      if (ctx) {
-        ctx.fillStyle = computed
-        const hex = ctx.fillStyle
-        if (hex.startsWith('#')) {
-          return parseInt(hex.slice(1, 7), 16)
-        }
-      }
-      return 0x111122
-    })()
-
-    app
-      .init({
-        background: bgHex,
-        resizeTo: container,
-        antialias: true,
-        autoDensity: true,
-        resolution: window.devicePixelRatio || 1,
-      })
-      .then(() => {
-        if (cancelled) {
-          app.destroy(true)
-          return
-        }
-
-        container.appendChild(app.canvas as HTMLCanvasElement)
-        appRef.current = app
-
-        const world = new Container()
-        world.label = 'world'
-        world.isRenderGroup = true
-        app.stage.addChild(world)
-        worldRef.current = world
-
-        const edgeGraphics = new Graphics()
-        edgeGraphics.label = 'edges'
-        world.addChild(edgeGraphics)
-        edgeGraphicsRef.current = edgeGraphics
-
-        // 뷰포트 설정
-        cleanupViewportRef.current = setupViewport(world, app.canvas as HTMLCanvasElement, viewportStateRef.current)
-
-        // FPS 모니터링 (~1초 간격 throttle)
-        let lastFpsReport = 0
-        app.ticker.add((ticker) => {
-          const now = performance.now()
-          if (now - lastFpsReport >= 1000) {
-            lastFpsReport = now
-            onFpsUpdateRef.current?.(Math.round(ticker.FPS))
-          }
-        })
-      })
-
-    return () => {
-      cancelled = true
-      cleanupViewportRef.current?.()
-      if (appRef.current) {
-        appRef.current.destroy(true, { children: true })
-        appRef.current = null
-      }
-      // StrictMode 재마운트 시 잔여 캔버스 제거
-      while (container.firstChild) {
-        container.removeChild(container.firstChild)
-      }
-      worldRef.current = null
-      edgeGraphicsRef.current = null
-      nodeContainers.clear()
-    }
-  }, [])
+  // 뷰포트 설정 — app/world 준비 완료 시
+  useEffect(() => {
+    if (!world || !app) return
+    const canvas = app.canvas as HTMLCanvasElement
+    const cleanup = setupViewport(world, canvas, viewportStateRef.current)
+    return cleanup
+  }, [world, app])
 
   // 노드 변경 시 캔버스 업데이트 (diff 기반 incremental)
   useEffect(() => {
-    const world = worldRef.current
-    const edgeGraphics = edgeGraphicsRef.current
-    const app = appRef.current
-    if (!world || !edgeGraphics || !app) return
+    if (!world || !edgeGraphics || !resources) return
+    if (nodes === prevNodesRef.current) return
+    prevNodesRef.current = nodes
 
     if (nodes.length === 0) return
 
@@ -169,7 +102,7 @@ export function PixiCanvas({ nodes, onNodeClick, onFpsUpdate, selectedNodeId }: 
       }
 
       const isSelected = pos.nodeId === selectedNodeIdRef.current
-      const gfx = createNodeGraphics(node, pos, isSelected)
+      const gfx = createNodeGraphics(node, pos, resources, isSelected)
       gfx.on('pointertap', () => {
         onNodeClickRef.current?.(node)
       })
@@ -181,35 +114,38 @@ export function PixiCanvas({ nodes, onNodeClick, onFpsUpdate, selectedNodeId }: 
     drawEdges(edgeGraphics, layout.edges, posMap)
 
     // 자동 스크롤
-    if (viewportStateRef.current.autoScroll) {
+    if (viewportStateRef.current.autoScroll && app) {
       const canvas = app.canvas as HTMLCanvasElement
       scrollToBottom(world, canvas.height / (window.devicePixelRatio || 1), layout.totalHeight)
     }
-  }, [nodes])
+  }, [nodes, world, edgeGraphics, resources, app])
 
   // 선택 변경 시 필터만 교체 (노드 재생성 없이)
-  // nodes를 의존성에서 제외: 노드 생성/재생성 시 이미 isSelected 반영됨
-  const nodesRef = useRef(nodes)
   useEffect(() => {
-    nodesRef.current = nodes
-  }, [nodes])
-
-  useEffect(() => {
+    if (!resources) return
     const existing = nodeContainersRef.current
     const nodeMap = new Map(nodesRef.current.map((n) => [n.id, n]))
 
     if (prevSelectedRef.current && prevSelectedRef.current !== selectedNodeId) {
       const prev = existing.get(prevSelectedRef.current)
       const prevNode = nodeMap.get(prevSelectedRef.current)
-      if (prev && prevNode) updateNodeSelection(prev.container, false, prevNode.type)
+      if (prev && prevNode) updateNodeSelection(prev.container, false, prevNode.type, resources)
     }
     if (selectedNodeId) {
       const sel = existing.get(selectedNodeId)
       const selNode = nodeMap.get(selectedNodeId)
-      if (sel && selNode) updateNodeSelection(sel.container, true, selNode.type)
+      if (sel && selNode) updateNodeSelection(sel.container, true, selNode.type, resources)
     }
     prevSelectedRef.current = selectedNodeId ?? null
-  }, [selectedNodeId])
+  }, [selectedNodeId, resources])
+
+  if (error) {
+    return (
+      <div className="flex h-full items-center justify-center text-muted-foreground">
+        <p>Canvas initialization failed: {error.message}</p>
+      </div>
+    )
+  }
 
   return <div ref={containerRef} className="w-full h-full overflow-hidden" />
 }

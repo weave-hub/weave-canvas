@@ -4,26 +4,40 @@ import { Container } from 'pixi.js'
 const MIN_SCALE = 0.1
 const MAX_SCALE = 3
 const ZOOM_FACTOR = 0.1
+const DRAG_THRESHOLD = 3
 
 export type ViewportState = {
   autoScroll: boolean
 }
 
 export function setupViewport(stage: Container, canvas: HTMLCanvasElement, state: ViewportState): () => void {
+  let isPointerDown = false
   let isDragging = false
+  let startX = 0
+  let startY = 0
   let lastX = 0
   let lastY = 0
 
   const onPointerDown = (e: PointerEvent) => {
-    // 캔버스 배경 클릭 시에만 팬 시작
-    isDragging = true
+    startX = e.clientX
+    startY = e.clientY
     lastX = e.clientX
     lastY = e.clientY
+    isPointerDown = true
+    isDragging = false
     canvas.setPointerCapture(e.pointerId)
   }
 
   const onPointerMove = (e: PointerEvent) => {
-    if (!isDragging) return
+    if (!isPointerDown) return
+
+    if (!isDragging) {
+      const dx = e.clientX - startX
+      const dy = e.clientY - startY
+      if (Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) return
+      isDragging = true
+    }
+
     const dx = e.clientX - lastX
     const dy = e.clientY - lastY
     stage.x += dx
@@ -34,8 +48,11 @@ export function setupViewport(stage: Container, canvas: HTMLCanvasElement, state
   }
 
   const onPointerUp = (e: PointerEvent) => {
+    if (isPointerDown) {
+      canvas.releasePointerCapture(e.pointerId)
+    }
+    isPointerDown = false
     isDragging = false
-    canvas.releasePointerCapture(e.pointerId)
   }
 
   const onWheel = (e: WheelEvent) => {

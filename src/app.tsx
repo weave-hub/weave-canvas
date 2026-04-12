@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { IconActivityHeartbeat } from '@tabler/icons-react'
 import { Toolbar } from './components/toolbar'
 import { SidePanel } from './components/side-panel'
-import { CanvasArea } from './components/canvas-area'
+import { PixiCanvas } from './components/pixi-canvas'
 import { StatusBar } from './components/status-bar'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from './components/ui/empty'
 import { useSessionEvents } from './hooks/use-session-events'
@@ -62,7 +62,7 @@ function App() {
       />
       <main className="relative flex-1 overflow-hidden">
         {effectiveSessionId ? (
-          <CanvasArea
+          <PixiCanvas
             key={effectiveSessionId}
             nodes={filteredNodes}
             onNodeClick={handleNodeClick}

@@ -8,27 +8,10 @@ import {
   NODE_MAX_PREVIEW_LINES,
   CHARS_PER_LINE,
 } from './constants'
-
-function countWrappedLines(text: string): number {
-  if (!text) return 0
-
-  const lines = text.split('\n')
-  let total = 0
-
-  for (const line of lines) {
-    if (line.length === 0) {
-      total += 1
-    } else {
-      total += Math.ceil(line.length / CHARS_PER_LINE)
-    }
-    if (total >= NODE_MAX_PREVIEW_LINES) return NODE_MAX_PREVIEW_LINES
-  }
-
-  return Math.min(total, NODE_MAX_PREVIEW_LINES)
-}
+import { countWrappedLines } from './text-utils'
 
 export function measureNodeHeight(node: CanvasNode): number {
-  const previewLines = countWrappedLines(node.content)
+  const previewLines = countWrappedLines(node.content, CHARS_PER_LINE, NODE_MAX_PREVIEW_LINES)
   const contentHeight = previewLines > 0 ? previewLines * NODE_LINE_HEIGHT : 0
 
   // header + separator gap + content + bottom padding
