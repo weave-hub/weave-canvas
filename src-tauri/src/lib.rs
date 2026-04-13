@@ -17,6 +17,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             projects::commands::list_projects,
+            sessions::commands::list_active_sessions,
             sessions::commands::list_sessions,
             sessions::commands::get_session_detail,
         ])
