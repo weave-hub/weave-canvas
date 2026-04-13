@@ -1,56 +1,12 @@
-use serde::{Deserialize, Serialize};
+//! Claude Code JSONL 라인 → [`SessionEvent`] 변환 로직.
+//!
+//! 순수 함수 집합. 파일 I/O는 하지 않고, 한 줄의 문자열을 받아
+//! 0개 이상의 이벤트로 변환만 담당한다.
+
+use serde::Deserialize;
 use serde_json::Value;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(tag = "type", rename_all = "camelCase")]
-pub enum SessionEvent {
-    SessionDiscovered {
-        session_id: String,
-        project_path: String,
-    },
-    SessionEnded {
-        session_id: String,
-    },
-    SessionIdle {
-        session_id: String,
-    },
-    SessionActive {
-        session_id: String,
-    },
-    AgentDiscovered {
-        session_id: String,
-        agent_id: String,
-        agent_type: Option<String>,
-    },
-    Thinking {
-        session_id: String,
-        agent_id: String,
-        timestamp: String,
-        content: String,
-    },
-    Text {
-        session_id: String,
-        agent_id: String,
-        timestamp: String,
-        content: String,
-    },
-    ToolUse {
-        session_id: String,
-        agent_id: String,
-        timestamp: String,
-        tool_id: String,
-        tool_name: String,
-        input: Value,
-    },
-    ToolResult {
-        session_id: String,
-        agent_id: String,
-        timestamp: String,
-        tool_id: String,
-        content: String,
-        duration_ms: Option<u64>,
-    },
-}
+use super::events::SessionEvent;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -83,11 +39,10 @@ struct ContentBlock {
     input: Value,
 }
 
-/// Parse a single JSONL line and return zero or more SessionEvents.
+/// JSONL 한 줄을 파싱해 0개 이상의 [`SessionEvent`] 를 반환한다.
 ///
-/// `session_id` and `agent_id` are used as fallbacks when the raw line does not
-/// include them (e.g. older log formats), but the values from the parsed JSON
-/// always take precedence.
+/// `session_id` 와 `agent_id` 는 라인에 해당 필드가 없을 때 쓰는 폴백.
+/// 라인 자체에 값이 있으면 그 값이 우선한다.
 pub fn parse_line(line: &str, session_id: &str, agent_id: &str) -> Vec<SessionEvent> {
     let line = line.trim();
     if line.is_empty() {
@@ -113,7 +68,6 @@ pub fn parse_line(line: &str, session_id: &str, agent_id: &str) -> Vec<SessionEv
         Err(_) => return vec![],
     };
 
-    // Use parsed values, falling back to caller-supplied context
     let effective_session_id = if raw.session_id.is_empty() {
         session_id.to_string()
     } else {
@@ -188,7 +142,6 @@ fn parse_user(raw: &RawMessage, session_id: &str, agent_id: &str) -> Vec<Session
         None => return vec![],
     };
 
-    // If content is a plain string it is a user prompt — skip
     if content.is_string() {
         return vec![];
     }

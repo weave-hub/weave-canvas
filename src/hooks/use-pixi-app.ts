@@ -51,6 +51,21 @@ export function usePixiApp(
 
     const app = new Application()
     let cancelled = false
+    // PixiJS ResizePlugin 은 destroy 가 두 번 호출되면 `_cancelResize is not a function`
+    // TypeError 를 던진다. StrictMode 더블 마운트 + init 비동기 레이스 상황에서
+    // cleanup 과 init-resolver 양쪽이 destroy 를 부르는 것을 플래그로 방지한다.
+    let destroyed = false
+    const destroyApp = (): void => {
+      if (destroyed) return
+      destroyed = true
+      resourcesRef.current?.destroy()
+      resourcesRef.current = null
+      try {
+        app.destroy(true, { children: true })
+      } catch {
+        // init 완료 전이거나 이미 destroy 된 상태 — 조용히 무시
+      }
+    }
 
     const bgHex = resolveBgColor(container)
 
@@ -64,7 +79,7 @@ export function usePixiApp(
       })
       .then(() => {
         if (cancelled) {
-          app.destroy(true)
+          destroyApp()
           return
         }
 
@@ -108,9 +123,7 @@ export function usePixiApp(
 
     return () => {
       cancelled = true
-      resourcesRef.current?.destroy()
-      resourcesRef.current = null
-      app.destroy(true, { children: true })
+      destroyApp()
       // StrictMode 재마운트 시 잔여 캔버스 제거
       while (container.firstChild) {
         container.removeChild(container.firstChild)
