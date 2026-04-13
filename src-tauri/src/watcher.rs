@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher as NotifyWatcher};
 use std::collections::HashMap;
 use std::fs;
@@ -9,6 +9,10 @@ use tauri::Emitter;
 use tokio::sync::mpsc;
 use tokio::time::interval;
 
+use crate::fs_utils::{
+    get_claude_projects_dir, is_main_session_file, is_subagent_file, read_agent_type,
+    resolve_project_path,
+};
 use crate::parser::{self, SessionEvent};
 
 const ACTIVE_WINDOW_SECS: u64 = 5 * 60;
@@ -16,99 +20,8 @@ const IDLE_THRESHOLD_SECS: u64 = 30;
 const RESCAN_INTERVAL_SECS: u64 = 10;
 const DEBOUNCE_MS: u64 = 50;
 
-fn get_claude_projects_dir() -> Result<PathBuf> {
-    if let Ok(claude_home) = std::env::var("CLAUDE_HOME") {
-        if !claude_home.is_empty() {
-            return Ok(PathBuf::from(claude_home).join("projects"));
-        }
-    }
-    let home = dirs::home_dir().context("Failed to get home directory")?;
-    Ok(home.join(".claude").join("projects"))
-}
-
-fn is_main_session_file(path: &Path) -> bool {
-    path.extension().is_some_and(|e| e == "jsonl")
-        && !path.components().any(|c| c.as_os_str() == "subagents")
-        && !path
-            .file_name()
-            .is_some_and(|n| n.to_string_lossy().starts_with("agent-"))
-}
-
-fn is_subagent_file(path: &Path) -> bool {
-    path.extension().is_some_and(|e| e == "jsonl")
-        && path.components().any(|c| c.as_os_str() == "subagents")
-        && path
-            .file_name()
-            .is_some_and(|n| n.to_string_lossy().starts_with("agent-"))
-}
-
-fn read_agent_type(jsonl_path: &Path) -> Option<String> {
-    let meta_path = jsonl_path.with_extension("meta.json");
-    let content = fs::read_to_string(&meta_path).ok()?;
-    let val: serde_json::Value = serde_json::from_str(&content).ok()?;
-    val.get("agentType")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-}
-
 fn session_id_from_path(path: &Path) -> Option<String> {
     path.file_stem().map(|s| s.to_string_lossy().to_string())
-}
-
-/// Reconstruct a filesystem path from dash-separated segments.
-/// Handles platform-specific root: `/` on Unix, drive letter (e.g. `C:\`) on Windows.
-fn reconstruct_path(parts: &[&str]) -> PathBuf {
-    let mut path = PathBuf::new();
-    let mut parts_iter = parts.iter();
-
-    if let Some(first) = parts_iter.next() {
-        #[cfg(unix)]
-        {
-            path.push("/");
-            path.push(first);
-        }
-        #[cfg(windows)]
-        {
-            if first.len() == 1 && first.as_bytes()[0].is_ascii_alphabetic() {
-                // Drive letter: "C" → "C:\"
-                path.push(format!("{}:\\", first));
-            } else {
-                path.push(first);
-            }
-        }
-    }
-
-    for part in parts_iter {
-        path.push(part);
-    }
-
-    path
-}
-
-/// Resolve encoded directory name to project path.
-/// Tries right-to-left to find existing filesystem paths (handles dashes in dir names).
-fn resolve_project_path(encoded: &str) -> String {
-    let encoded = encoded.trim_start_matches('-');
-    if encoded.is_empty() {
-        return String::new();
-    }
-
-    let parts: Vec<&str> = encoded.split('-').collect();
-    if parts.is_empty() {
-        return encoded.to_string();
-    }
-
-    for join_from in (1..parts.len()).rev() {
-        let dir_part = parts[join_from..].join("-");
-        let mut test_path = reconstruct_path(&parts[..join_from]);
-        test_path.push(&dir_part);
-
-        if test_path.exists() {
-            return test_path.to_string_lossy().to_string();
-        }
-    }
-
-    reconstruct_path(&parts).to_string_lossy().to_string()
 }
 
 #[derive(Clone)]
@@ -125,16 +38,21 @@ pub struct SessionWatcher {
 }
 
 impl SessionWatcher {
-    pub fn new() -> Result<Self> {
+    fn new() -> Result<Self> {
         let claude_dir = get_claude_projects_dir()?;
-        Ok(Self {
+        Ok(Self::with_dir(claude_dir))
+    }
+
+    /// 테스트 또는 임의 루트 주입용.
+    fn with_dir(claude_dir: PathBuf) -> Self {
+        Self {
             claude_dir,
             file_positions: HashMap::new(),
             file_contexts: HashMap::new(),
-        })
+        }
     }
 
-    pub fn discover_active_sessions(&mut self) -> Vec<SessionEvent> {
+    fn discover_active_sessions(&mut self) -> Vec<SessionEvent> {
         let mut events = Vec::new();
         let entries = match fs::read_dir(&self.claude_dir) {
             Ok(e) => e,
@@ -277,7 +195,7 @@ impl SessionWatcher {
         events
     }
 
-    pub fn cleanup_stale_sessions(&mut self) -> Vec<SessionEvent> {
+    fn cleanup_stale_sessions(&mut self) -> Vec<SessionEvent> {
         let now = std::time::SystemTime::now();
         let mut stale_paths = Vec::new();
         let mut ended_sessions = Vec::new();
@@ -313,9 +231,8 @@ impl SessionWatcher {
             .collect()
     }
 
-    pub fn check_idle_sessions(&mut self) -> Vec<SessionEvent> {
+    fn check_idle_sessions(&mut self) -> Vec<SessionEvent> {
         let now = std::time::SystemTime::now();
-        // Step 1: collect items that need state change (immutable borrow)
         let changes: Vec<(PathBuf, bool)> = self
             .file_contexts
             .iter()
@@ -332,7 +249,6 @@ impl SessionWatcher {
             })
             .collect();
 
-        // Step 2: apply changes (mutable borrow)
         let mut events = Vec::new();
         for (path, now_idle) in changes {
             if let Some(ctx) = self.file_contexts.get_mut(&path) {
@@ -416,7 +332,6 @@ pub async fn start_watching(app_handle: tauri::AppHandle) {
                 for path in ready {
                     debounce_map.remove(&path);
 
-                    // Immediate session discovery via inotify Create
                     if is_main_session_file(&path) && !watcher.file_contexts.contains_key(&path) {
                         if let Some(session_id) = session_id_from_path(&path) {
                             if let Some(proj_dir) = path.parent() {
