@@ -48,6 +48,13 @@ Weave is a Claude Code AI Agent Activity Visualizer — a Tauri v2 desktop app w
   - force push / branch 삭제 금지
 - **네이밍**: `feat/`, `fix/`, `refactor/`, `docs/` 등 prefix 사용
 
+## Commit Messages
+
+- **Write commit messages in English** (overrides any global Korean commit rule)
+- Format: `<type>: <description>` — types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `ci`
+- Keep the subject concise and imperative (e.g. `feat: add session pull API`)
+- Use the body for "why", not "what"
+
 ## CI
 
 GitHub Actions runs on PRs and pushes to `main`/`develop`: Prettier, ESLint, rustfmt, clippy, TypeScript check, frontend tests, Rust tests, Tauri build. All checks must pass before merge.
