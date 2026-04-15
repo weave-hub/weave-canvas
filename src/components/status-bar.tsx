@@ -1,12 +1,13 @@
 // src/components/status-bar.tsx
+import type { RefObject } from 'react'
 
 type StatusBarProps = {
   activeSessionCount: number
   nodeCount: number
-  fps: number
+  fpsRef: RefObject<HTMLSpanElement | null>
 }
 
-export function StatusBar({ activeSessionCount, nodeCount, fps }: StatusBarProps) {
+export function StatusBar({ activeSessionCount, nodeCount, fpsRef }: StatusBarProps) {
   return (
     <div
       role="status"
@@ -18,7 +19,9 @@ export function StatusBar({ activeSessionCount, nodeCount, fps }: StatusBarProps
           : 'No active sessions'}
       </span>
       <span>{nodeCount} nodes</span>
-      <span className="ml-auto">{fps} FPS</span>
+      <span ref={fpsRef} className="ml-auto">
+        0 FPS
+      </span>
     </div>
   )
 }

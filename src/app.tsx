@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { IconActivityHeartbeat } from '@tabler/icons-react'
 import { Toolbar } from './components/toolbar'
 import { SidePanel } from './components/side-panel'
@@ -6,31 +6,18 @@ import { PixiCanvas } from './components/pixi-canvas'
 import { StatusBar } from './components/status-bar'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from './components/ui/empty'
 import { useSessionEvents } from './hooks/use-session-events'
+import { useSessionSelection } from './hooks/use-session-selection'
 import type { CanvasNode } from './types'
 
 function App() {
   const [panelOpen, setPanelOpen] = useState(true)
-  const [selectedNode, setSelectedNode] = useState<CanvasNode | null>(null)
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
-  const [fps, setFps] = useState(0)
+  const fpsRef = useRef<HTMLSpanElement>(null)
   const { sessions, nodes } = useSessionEvents()
-
-  // Derive effective session: fall back to first active/idle if current is invalid
-  const effectiveSessionId = useMemo(() => {
-    const current = selectedSessionId ? sessions.get(selectedSessionId) : null
-    if (current && current.status !== 'ended') return selectedSessionId
-
-    const allSessions = Array.from(sessions.values())
-    const next = allSessions.find((s) => s.status === 'active') ?? allSessions.find((s) => s.status === 'idle') ?? null
-    return next?.sessionId ?? null
-  }, [sessions, selectedSessionId])
-
-  // Derive: clear selected node if it belongs to a different session
-  const effectiveSelectedNode = selectedNode && selectedNode.sessionId === effectiveSessionId ? selectedNode : null
+  const { sessionId, selectedNode, selectSession, selectNode } = useSessionSelection(sessions)
 
   const filteredNodes = useMemo(
-    () => (effectiveSessionId ? nodes.filter((n) => n.sessionId === effectiveSessionId) : []),
-    [nodes, effectiveSessionId],
+    () => (sessionId ? nodes.filter((n) => n.sessionId === sessionId) : []),
+    [nodes, sessionId],
   )
 
   const nodeCountBySession = useMemo(() => {
@@ -41,10 +28,13 @@ function App() {
     return map
   }, [nodes])
 
-  const handleNodeClick = useCallback((node: CanvasNode) => {
-    setSelectedNode(node)
-    setPanelOpen(true)
-  }, [])
+  const handleNodeClick = useCallback(
+    (node: CanvasNode) => {
+      selectNode(node)
+      setPanelOpen(true)
+    },
+    [selectNode],
+  )
 
   const activeCount = useMemo(
     () => Array.from(sessions.values()).filter((s) => s.status !== 'ended').length,
@@ -56,18 +46,18 @@ function App() {
       <Toolbar
         onTogglePanel={() => setPanelOpen((prev) => !prev)}
         sessions={sessions}
-        selectedSessionId={effectiveSessionId}
-        onSelectSession={setSelectedSessionId}
+        selectedSessionId={sessionId}
+        onSelectSession={selectSession}
         nodeCountBySession={nodeCountBySession}
       />
       <main className="relative flex-1 overflow-hidden">
-        {effectiveSessionId ? (
+        {sessionId ? (
           <PixiCanvas
-            key={effectiveSessionId}
+            key={sessionId}
             nodes={filteredNodes}
             onNodeClick={handleNodeClick}
-            onFpsUpdate={setFps}
-            selectedNodeId={effectiveSelectedNode?.id}
+            selectedNodeId={selectedNode?.id}
+            fpsRef={fpsRef}
           />
         ) : (
           <div className="flex h-full items-center justify-center">
@@ -82,9 +72,9 @@ function App() {
             </Empty>
           </div>
         )}
-        <SidePanel open={panelOpen} onOpenChange={setPanelOpen} selectedNode={effectiveSelectedNode} />
+        <SidePanel open={panelOpen} onOpenChange={setPanelOpen} selectedNode={selectedNode} />
       </main>
-      <StatusBar activeSessionCount={activeCount} nodeCount={filteredNodes.length} fps={fps} />
+      <StatusBar activeSessionCount={activeCount} nodeCount={filteredNodes.length} fpsRef={fpsRef} />
     </div>
   )
 }
