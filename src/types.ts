@@ -12,30 +12,30 @@ export type SessionEventType =
   | 'toolResult'
 
 export type SessionEvent =
-  | { type: 'sessionDiscovered'; session_id: string; project_path: string }
-  | { type: 'sessionEnded'; session_id: string }
-  | { type: 'sessionIdle'; session_id: string }
-  | { type: 'sessionActive'; session_id: string }
-  | { type: 'agentDiscovered'; session_id: string; agent_id: string; agent_type: string | null }
-  | { type: 'thinking'; session_id: string; agent_id: string; timestamp: string; content: string }
-  | { type: 'text'; session_id: string; agent_id: string; timestamp: string; content: string }
+  | { type: 'sessionDiscovered'; sessionId: string; projectPath: string }
+  | { type: 'sessionEnded'; sessionId: string }
+  | { type: 'sessionIdle'; sessionId: string }
+  | { type: 'sessionActive'; sessionId: string }
+  | { type: 'agentDiscovered'; sessionId: string; agentId: string; agentType: string | null }
+  | { type: 'thinking'; sessionId: string; agentId: string; timestamp: string; content: string }
+  | { type: 'text'; sessionId: string; agentId: string; timestamp: string; content: string }
   | {
       type: 'toolUse'
-      session_id: string
-      agent_id: string
+      sessionId: string
+      agentId: string
       timestamp: string
-      tool_id: string
-      tool_name: string
+      toolId: string
+      toolName: string
       input: unknown
     }
   | {
       type: 'toolResult'
-      session_id: string
-      agent_id: string
+      sessionId: string
+      agentId: string
       timestamp: string
-      tool_id: string
+      toolId: string
       content: string
-      duration_ms: number | null
+      durationMs: number | null
     }
 
 export type CanvasNodeType = 'thinking' | 'text' | 'tool-use' | 'tool-result'
@@ -64,4 +64,27 @@ export type SessionState = {
 export type AgentInfo = {
   agentId: string
   agentType?: string
+}
+
+// IPC Data Transfer Objects — Rust 백엔드 응답 타입.
+// UI 상태 타입(SessionState 등)과 구분하기 위해 Dto 접미사를 붙인다.
+
+export type SessionInfoDto = {
+  sessionId: string
+  projectPath: string
+  status: SessionStatus
+  lastModified: number
+  agentCount: number
+}
+
+export type SessionDetailDto = {
+  sessionId: string
+  projectPath: string
+  events: SessionEvent[]
+}
+
+export type ProjectInfoDto = {
+  projectPath: string
+  encodedName: string
+  sessionCount: number
 }
