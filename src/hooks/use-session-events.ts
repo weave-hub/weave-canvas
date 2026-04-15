@@ -1,7 +1,6 @@
 // src/hooks/use-session-events.ts
 import { useEffect, useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
+import { commands, events } from '@/lib/ipc'
 import type { CanvasNode, SessionEvent, SessionState, AgentInfo } from '@/types'
 
 function makeNodeId(): string {
@@ -14,8 +13,8 @@ function eventToNodes(event: SessionEvent): CanvasNode[] {
       return [
         {
           id: makeNodeId(),
-          sessionId: event.session_id,
-          agentId: event.agent_id,
+          sessionId: event.sessionId,
+          agentId: event.agentId,
           type: 'thinking',
           timestamp: new Date(event.timestamp).getTime(),
           content: event.content,
@@ -25,8 +24,8 @@ function eventToNodes(event: SessionEvent): CanvasNode[] {
       return [
         {
           id: makeNodeId(),
-          sessionId: event.session_id,
-          agentId: event.agent_id,
+          sessionId: event.sessionId,
+          agentId: event.agentId,
           type: 'text',
           timestamp: new Date(event.timestamp).getTime(),
           content: event.content,
@@ -36,12 +35,12 @@ function eventToNodes(event: SessionEvent): CanvasNode[] {
       return [
         {
           id: makeNodeId(),
-          sessionId: event.session_id,
-          agentId: event.agent_id,
+          sessionId: event.sessionId,
+          agentId: event.agentId,
           type: 'tool-use',
           timestamp: new Date(event.timestamp).getTime(),
-          toolName: event.tool_name,
-          toolId: event.tool_id,
+          toolName: event.toolName,
+          toolId: event.toolId,
           content: JSON.stringify(event.input),
         },
       ]
@@ -49,13 +48,13 @@ function eventToNodes(event: SessionEvent): CanvasNode[] {
       return [
         {
           id: makeNodeId(),
-          sessionId: event.session_id,
-          agentId: event.agent_id,
+          sessionId: event.sessionId,
+          agentId: event.agentId,
           type: 'tool-result',
           timestamp: new Date(event.timestamp).getTime(),
-          toolId: event.tool_id,
+          toolId: event.toolId,
           content: event.content,
-          durationMs: event.duration_ms ?? undefined,
+          durationMs: event.durationMs ?? undefined,
         },
       ]
     default:
@@ -74,11 +73,11 @@ export function useSessionEvents() {
       switch (payload.type) {
         case 'sessionDiscovered': {
           setSessions((prev) => {
-            const existing = prev.get(payload.session_id)
+            const existing = prev.get(payload.sessionId)
             const next = new Map(prev)
-            next.set(payload.session_id, {
-              sessionId: payload.session_id,
-              projectPath: payload.project_path,
+            next.set(payload.sessionId, {
+              sessionId: payload.sessionId,
+              projectPath: payload.projectPath,
               // 이미 수집된 에이전트가 있으면 유지 (pull/push 순서 무관 idempotency)
               agents: existing?.agents ?? new Map(),
               status: existing?.status ?? 'active',
@@ -90,9 +89,9 @@ export function useSessionEvents() {
         case 'sessionEnded': {
           setSessions((prev) => {
             const next = new Map(prev)
-            const session = next.get(payload.session_id)
+            const session = next.get(payload.sessionId)
             if (session) {
-              next.set(payload.session_id, { ...session, status: 'ended' })
+              next.set(payload.sessionId, { ...session, status: 'ended' })
             }
             return next
           })
@@ -101,9 +100,9 @@ export function useSessionEvents() {
         case 'sessionIdle': {
           setSessions((prev) => {
             const next = new Map(prev)
-            const session = next.get(payload.session_id)
+            const session = next.get(payload.sessionId)
             if (session) {
-              next.set(payload.session_id, { ...session, status: 'idle' })
+              next.set(payload.sessionId, { ...session, status: 'idle' })
             }
             return next
           })
@@ -112,9 +111,9 @@ export function useSessionEvents() {
         case 'sessionActive': {
           setSessions((prev) => {
             const next = new Map(prev)
-            const session = next.get(payload.session_id)
+            const session = next.get(payload.sessionId)
             if (session) {
-              next.set(payload.session_id, { ...session, status: 'active' })
+              next.set(payload.sessionId, { ...session, status: 'active' })
             }
             return next
           })
@@ -123,15 +122,15 @@ export function useSessionEvents() {
         case 'agentDiscovered': {
           setSessions((prev) => {
             const next = new Map(prev)
-            const session = next.get(payload.session_id)
+            const session = next.get(payload.sessionId)
             if (session) {
               const agents = new Map(session.agents)
               const agentInfo: AgentInfo = {
-                agentId: payload.agent_id,
-                agentType: payload.agent_type ?? undefined,
+                agentId: payload.agentId,
+                agentType: payload.agentType ?? undefined,
               }
-              agents.set(payload.agent_id, agentInfo)
-              next.set(payload.session_id, { ...session, agents })
+              agents.set(payload.agentId, agentInfo)
+              next.set(payload.sessionId, { ...session, agents })
             }
             return next
           })
@@ -149,18 +148,17 @@ export function useSessionEvents() {
     // 1) 초기 동기화 — pull.
     //    watcher가 마운트 전에 쏜 초기 이벤트는 놓쳤을 수 있지만,
     //    이 커맨드가 파일시스템을 새로 스캔해 현재 활성 세션을 돌려준다.
-    invoke<SessionEvent[]>('list_active_sessions')
-      .then((events) => {
-        events.forEach(applyEvent)
+    commands
+      .listActiveSessions()
+      .then((evts) => {
+        evts.forEach(applyEvent)
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         console.error('Failed to sync active sessions on mount:', err)
       })
 
     // 2) 실시간 구독 — push. 이후 변경사항은 watcher 가 방출함.
-    const unlisten = listen<SessionEvent>('session-event', ({ payload }) => {
-      applyEvent(payload)
-    })
+    const unlisten = events.onSessionEvent(applyEvent)
 
     return () => {
       unlisten.then((fn) => fn())
