@@ -1,5 +1,5 @@
 // src/components/pixi-canvas.tsx
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { Application, useApplication, useTick } from '@pixi/react'
 import { Container, Graphics } from 'pixi.js'
 import type { Ticker } from 'pixi.js'
@@ -40,9 +40,12 @@ function resolveBgColor(container: HTMLElement): number {
 // 모든 PixiJS 렌더링 로직을 담당하며 JSX를 반환하지 않음
 function PixiSceneManager({ nodes, onNodeClick, selectedNodeId, fpsRef }: PixiCanvasProps): null {
   const { app } = useApplication()
-  const [world, setWorld] = useState<Container | null>(null)
-  const [edgeGraphics, setEdgeGraphics] = useState<Graphics | null>(null)
-  const [resources, setResources] = useState<SharedResources | null>(null)
+  // PixiJS 객체는 엔진이 소유하는 외부 리소스 — refs 로 보관한다. useState 는
+  // cascading render 를 유발하고, 의존 effect 들은 어차피 같은 tick 의 선언 순서대로
+  // 실행되므로 render 트리거가 필요 없다.
+  const worldRef = useRef<Container | null>(null)
+  const edgeGraphicsRef = useRef<Graphics | null>(null)
+  const resourcesRef = useRef<SharedResources | null>(null)
 
   const nodeContainersRef = useRef<Map<string, CachedNode>>(new Map())
   const viewportStateRef = useRef<ViewportState>({ autoScroll: true })
@@ -71,6 +74,8 @@ function PixiSceneManager({ nodes, onNodeClick, selectedNodeId, fpsRef }: PixiCa
     const canvasEl = app.canvas as HTMLCanvasElement
     const container = canvasEl.parentElement
     if (container) {
+      // PixiJS 렌더러는 설계상 mutable 하며 background.color 는 공식 setter 다.
+      // eslint-disable-next-line react-hooks/immutability
       app.renderer.background.color = resolveBgColor(container)
     }
   }, [app])
@@ -86,39 +91,50 @@ function PixiSceneManager({ nodes, onNodeClick, selectedNodeId, fpsRef }: PixiCa
 
     const res = createSharedResources()
 
-    setWorld(w)
-    setEdgeGraphics(eg)
-    setResources(res)
+    worldRef.current = w
+    edgeGraphicsRef.current = eg
+    resourcesRef.current = res
 
     return () => {
       res.destroy()
       w.destroy({ children: true })
+      worldRef.current = null
+      edgeGraphicsRef.current = null
+      resourcesRef.current = null
     }
   }, [app])
 
   // FPS 보고 — R3F 패턴: useCallback memoize + ref mutation (setState 없음)
   useTick(
-    useCallback((ticker: Ticker) => {
-      const now = performance.now()
-      if (now - lastFpsReportRef.current >= 1000) {
-        lastFpsReportRef.current = now
-        if (fpsRef.current) {
-          fpsRef.current.textContent = `${Math.round(ticker.FPS)} FPS`
+    useCallback(
+      (ticker: Ticker) => {
+        const now = performance.now()
+        if (now - lastFpsReportRef.current >= 1000) {
+          lastFpsReportRef.current = now
+          if (fpsRef.current) {
+            fpsRef.current.textContent = `${Math.round(ticker.FPS)} FPS`
+          }
         }
-      }
-    }, []),
+      },
+      [fpsRef],
+    ),
   )
 
-  // 뷰포트 설정 — world 준비 완료 시
+  // 뷰포트 설정 — world 준비 완료 시. 선행 effect 가 선언 순서상 먼저 실행되므로
+  // worldRef.current 는 이 시점에 이미 채워져 있다.
   useEffect(() => {
+    const world = worldRef.current
     if (!world) return
     const canvas = app.canvas as HTMLCanvasElement
     const cleanup = setupViewport(world, canvas, viewportStateRef.current)
     return cleanup
-  }, [world, app])
+  }, [app])
 
   // 노드 변경 시 캔버스 업데이트 (diff 기반 incremental)
   useEffect(() => {
+    const world = worldRef.current
+    const edgeGraphics = edgeGraphicsRef.current
+    const resources = resourcesRef.current
     if (!world || !edgeGraphics || !resources) return
     if (nodes === prevNodesRef.current) return
     prevNodesRef.current = nodes
@@ -175,10 +191,11 @@ function PixiSceneManager({ nodes, onNodeClick, selectedNodeId, fpsRef }: PixiCa
       const canvas = app.canvas as HTMLCanvasElement
       scrollToBottom(world, canvas.height / (window.devicePixelRatio || 1), layout.totalHeight)
     }
-  }, [nodes, world, edgeGraphics, resources, app])
+  }, [nodes, app])
 
   // 선택 변경 시 필터만 교체 (노드 재생성 없이)
   useEffect(() => {
+    const resources = resourcesRef.current
     if (!resources) return
     const existing = nodeContainersRef.current
     const nodeMap = new Map(nodesRef.current.map((n) => [n.id, n]))
@@ -194,7 +211,7 @@ function PixiSceneManager({ nodes, onNodeClick, selectedNodeId, fpsRef }: PixiCa
       if (sel && selNode) updateNodeSelection(sel.container, true, selNode.type, resources)
     }
     prevSelectedRef.current = selectedNodeId ?? null
-  }, [selectedNodeId, resources])
+  }, [selectedNodeId])
 
   return null
 }
