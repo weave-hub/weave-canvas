@@ -1,13 +1,13 @@
 // src/hooks/use-session-events.ts
 import { useEffect, useState } from 'react'
-import { commands, events } from '@/lib/ipc'
-import type { CanvasNode, SessionEvent, SessionState, AgentInfo } from '@/types'
+import { ipcCommands, ipcEvents, type IpcSessionEvent } from '@/lib/ipc'
+import type { CanvasNode, SessionState, AgentInfo } from '@/types'
 
 function makeNodeId(): string {
   return `node-${crypto.randomUUID()}`
 }
 
-function eventToNodes(event: SessionEvent): CanvasNode[] {
+function eventToNodes(event: IpcSessionEvent): CanvasNode[] {
   switch (event.type) {
     case 'thinking':
       return [
@@ -69,7 +69,7 @@ export function useSessionEvents() {
   useEffect(() => {
     // pull 과 push 경로를 동일하게 처리하기 위한 공용 핸들러.
     // idempotent 해야 함 — 같은 SessionDiscovered 가 여러 번 와도 안전해야 한다.
-    const applyEvent = (payload: SessionEvent): void => {
+    const applyEvent = (payload: IpcSessionEvent): void => {
       switch (payload.type) {
         case 'sessionDiscovered': {
           setSessions((prev) => {
@@ -148,7 +148,7 @@ export function useSessionEvents() {
     // 1) 초기 동기화 — pull.
     //    watcher가 마운트 전에 쏜 초기 이벤트는 놓쳤을 수 있지만,
     //    이 커맨드가 파일시스템을 새로 스캔해 현재 활성 세션을 돌려준다.
-    commands
+    ipcCommands
       .listActiveSessions()
       .then((evts) => {
         evts.forEach(applyEvent)
@@ -158,7 +158,7 @@ export function useSessionEvents() {
       })
 
     // 2) 실시간 구독 — push. 이후 변경사항은 watcher 가 방출함.
-    const unlisten = events.onSessionEvent(applyEvent)
+    const unlisten = ipcEvents.onSessionEvent(applyEvent)
 
     return () => {
       unlisten.then((fn) => fn())
